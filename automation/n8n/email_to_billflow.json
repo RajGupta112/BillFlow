@@ -1,0 +1,78 @@
+{
+    "name": "BillFlow - Email to invoice",
+    "nodes": [
+      {
+        "id": "a1f0c1d2-0001-4a00-9000-000000000001",
+        "name": "Email trigger (IMAP)",
+        "type": "n8n-nodes-base.emailReadImap",
+        "typeVersion": 2,
+        "position": [0, 0],
+        "parameters": {
+          "mailbox": "INBOX",
+          "postProcessAction": "read",
+          "format": "simple",
+          "options": {
+            "downloadAttachments": true
+          }
+        }
+      },
+      {
+        "id": "a1f0c1d2-0002-4a00-9000-000000000002",
+        "name": "Pick invoice attachments",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [280, 0],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "const ALLOWED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];\nconst EXT = { 'application/pdf': '.pdf', 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };\nconst MIN_IMAGE_BYTES = 20000; // skip tiny signature logos\nconst out = [];\nconst items = $input.all();\n\nfor (let i = 0; i < items.length; i++) {\n  const item = items[i];\n  const binary = item.binary || {};\n  const sender = (item.json.from && item.json.from.text) || String(item.json.from || '');\n\n  for (const key of Object.keys(binary)) {\n    const file = binary[key];\n    const type = (file.mimeType || '').toLowerCase();\n    if (!ALLOWED.includes(type)) continue;\n\n    if (type !== 'application/pdf') {\n      const buf = await this.helpers.getBinaryDataBuffer(i, key);\n      if (buf.length < MIN_IMAGE_BYTES) continue;\n    }\n\n    let name = file.fileName || 'attachment';\n    if (!/\\.(pdf|png|jpe?g|webp)$/i.test(name)) name += EXT[type];\n\n    out.push({\n      json: { sender, subject: item.json.subject || '', fileName: name },\n      binary: { data: { ...file, fileName: name } },\n    });\n  }\n}\n\nreturn out;"
+        }
+      },
+      {
+        "id": "a1f0c1d2-0003-4a00-9000-000000000003",
+        "name": "Send to BillFlow",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [560, 0],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "parameters": {
+          "method": "POST",
+          "url": "http://host.docker.internal:8000/api/webhooks/invoice",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "parameterType": "formBinaryData",
+                "name": "file",
+                "inputDataFieldName": "data"
+              },
+              {
+                "name": "sender",
+                "value": "={{ $json.sender }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 120000
+          }
+        }
+      }
+    ],
+    "connections": {
+      "Email trigger (IMAP)": {
+        "main": [[{ "node": "Pick invoice attachments", "type": "main", "index": 0 }]]
+      },
+      "Pick invoice attachments": {
+        "main": [[{ "node": "Send to BillFlow", "type": "main", "index": 0 }]]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }

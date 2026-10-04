@@ -1,0 +1,20 @@
+# secrets
+.env
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# node
+node_modules/
+dist/
+
+# uploads and data
+backend/uploads/
+pgdata/
+
+# os/editor
+.DS_Store
+.vscode/

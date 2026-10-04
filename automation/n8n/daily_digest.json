@@ -1,0 +1,83 @@
+{
+    "name": "BillFlow - Daily approvals digest",
+    "nodes": [
+      {
+        "id": "b2e1d2e3-0001-4b00-9000-000000000001",
+        "name": "Weekdays 9 AM",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [0, 0],
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * 1-5"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "b2e1d2e3-0002-4b00-9000-000000000002",
+        "name": "Get pending summary",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [260, 0],
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000,
+        "parameters": {
+          "method": "GET",
+          "url": "http://host.docker.internal:8000/api/webhooks/pending-summary",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "options": {
+            "timeout": 30000
+          }
+        }
+      },
+      {
+        "id": "b2e1d2e3-0003-4b00-9000-000000000003",
+        "name": "Build emails",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [520, 0],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "language": "javaScript",
+          "jsCode": "// ---- edit these ----\nconst TEST_RECIPIENT = ''; // demo: put your own email here and every mail goes to it. Leave empty for real use.\nconst ADMIN_EMAIL = 'admin@yourcompany.com';\nconst APP_URL = 'http://localhost:5173/app';\n// --------------------\n\nconst data = $input.first().json;\nconst out = [];\nconst plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');\n\nfor (const a of data.approvers || []) {\n  const text = [\n    'Hi ' + a.name + ',',\n    '',\n    'You have ' + plural(a.pending_count, 'invoice') + ' waiting for your approval.',\n    'The oldest has been waiting ' + plural(a.oldest_pending_days, 'day') + '.',\n    '',\n    'Review them here: ' + APP_URL + '/approvals',\n    '',\n    '- BillFlow'\n  ].join('\\n');\n  out.push({\n    json: {\n      to: TEST_RECIPIENT || a.email,\n      subject: 'BillFlow: pending approvals waiting (' + a.pending_count + ')',\n      text\n    }\n  });\n}\n\nconst failed = data.sync_failed || 0;\nconst review = data.needs_review || 0;\nif (failed > 0 || review > 0) {\n  const text = [\n    'Daily BillFlow check:',\n    '',\n    '- ' + plural(failed, 'invoice') + ' failed to post to Tally (see ' + APP_URL + '/reconciliation)',\n    '- ' + plural(review, 'invoice') + ' waiting for review (see ' + APP_URL + '/invoices)',\n    '',\n    '- BillFlow'\n  ].join('\\n');\n  out.push({\n    json: {\n      to: TEST_RECIPIENT || ADMIN_EMAIL,\n      subject: 'BillFlow: items need attention',\n      text\n    }\n  });\n}\n\nreturn out;"
+        }
+      },
+      {
+        "id": "b2e1d2e3-0004-4b00-9000-000000000004",
+        "name": "Send email",
+        "type": "n8n-nodes-base.emailSend",
+        "typeVersion": 2.1,
+        "position": [780, 0],
+        "parameters": {
+          "fromEmail": "BillFlow <you@gmail.com>",
+          "toEmail": "={{ $json.to }}",
+          "subject": "={{ $json.subject }}",
+          "emailFormat": "text",
+          "text": "={{ $json.text }}",
+          "options": {}
+        }
+      }
+    ],
+    "connections": {
+      "Weekdays 9 AM": {
+        "main": [[{ "node": "Get pending summary", "type": "main", "index": 0 }]]
+      },
+      "Get pending summary": {
+        "main": [[{ "node": "Build emails", "type": "main", "index": 0 }]]
+      },
+      "Build emails": {
+        "main": [[{ "node": "Send email", "type": "main", "index": 0 }]]
+      }
+    },
+    "active": false,
+    "settings": {
+      "executionOrder": "v1"
+    }
+  }
