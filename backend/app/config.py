@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     WEBHOOK_API_KEY: str = ""
     TALLY_URL: str = "http://localhost:9000"
     TALLY_COMPANY: str = "Demo Company"
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     TALLY_PURCHASE_LEDGER: str = "Purchase Accounts"
     TALLY_CGST_LEDGER: str = "Input CGST"
     TALLY_SGST_LEDGER: str = "Input SGST"
